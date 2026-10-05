@@ -1,26 +1,118 @@
-import { render, screen } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import App from "../App";
+import {
+  getTracks,
+  toggleFavorite,
+  uploadTrack,
+} from "../lib/api";
+import { useAudioStore, type Track } from "../store/useAudioStore";
 
-describe("App Component", () => {
-  it("renders the main title", () => {
-    // 1. Rendre le composant
-    render(<App />);
+vi.mock("../lib/api", () => ({
+  deleteTrack: vi.fn(),
+  getTracks: vi.fn(),
+  toggleFavorite: vi.fn(),
+  uploadTrack: vi.fn(),
+}));
 
-    // 2. Trouver l'élément titre
-    const titleElement = screen.getByText(/AudioVerse/i);
+const tracks: Track[] = [
+  {
+    id: "demo-accessibility",
+    title: "Tech & Accessibility Podcast",
+    artist: "Dev Talks",
+    src: "https://example.com/audio.mp3",
+    duration: 372,
+    isFavorite: false,
+    isUploaded: false,
+  },
+  {
+    id: "demo-focus",
+    title: "Focus & Code Session",
+    artist: "Lo-Fi Beats",
+    src: "https://example.com/audio-2.mp3",
+    duration: 423,
+    isFavorite: false,
+    isUploaded: false,
+  },
+];
 
-    // 3. Affirmer qu'il est présent dans le document
-    expect(titleElement).toBeTruthy();
+describe("AudioVerse", () => {
+  beforeEach(() => {
+    useAudioStore.setState({
+      isPlaying: false,
+      currentTime: 0,
+      duration: 0,
+      volume: 1,
+      currentTrack: null,
+    });
+    vi.mocked(getTracks).mockResolvedValue(tracks);
+    vi.mocked(toggleFavorite).mockReset();
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
   });
 
-  it("renders the playlist section with tracks", () => {
+  it("renders the page title and a library loaded from the API", async () => {
     render(<App />);
 
-    // Vérifie que le titre de la section Playlist est là
-    expect(screen.getByRole("heading", { name: /Playlist/i })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /votre univers/i })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: /votre bibliothèque/i })).toBeTruthy();
+    expect(screen.getAllByText(/Tech & Accessibility Podcast/i)).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Lancer la lecture" })).toBeTruthy();
+    expect(getTracks).toHaveBeenCalledOnce();
+  });
 
-    // Vérifie qu'au moins une des pistes est affichée par son titre
-    expect(screen.getAllByText(/Tech & Accessibility Podcast/i)).toBeTruthy();
+  it("filters the library to favorited tracks", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Focus & Code Session");
+
+    await user.click(screen.getByRole("button", { name: "Favoris" }));
+    expect(screen.getByText("Aucun titre ne correspond à votre recherche.")).toBeTruthy();
+
+    const favorite = {
+      ...tracks[0],
+      isFavorite: true,
+    };
+    vi.mocked(toggleFavorite).mockResolvedValue(favorite);
+    await user.click(screen.getByRole("button", { name: "Favoris" }));
+    await user.click(screen.getByRole("button", { name: /ajouter tech & accessibility podcast aux favoris/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /retirer tech & accessibility podcast des favoris/i })).toBeTruthy());
+
+    await user.click(screen.getByRole("button", { name: "Favoris" }));
+    expect(screen.getAllByText(/Tech & Accessibility Podcast/i)).toHaveLength(2);
+    expect(screen.queryByText("Focus & Code Session")).toBeNull();
+  });
+
+  it("adds an audio file to the library through the API", async () => {
+    const user = userEvent.setup();
+    const uploadedTrack: Track = {
+      ...tracks[0],
+      id: "uploaded-track",
+      title: "Mon nouvel épisode",
+      artist: "Mon podcast",
+      src: "/audio/uploaded-track.mp3",
+      isUploaded: true,
+    };
+    vi.mocked(uploadTrack).mockResolvedValue(uploadedTrack);
+    render(<App />);
+    await screen.findByText("Focus & Code Session");
+
+    await user.type(screen.getByLabelText("Titre"), uploadedTrack.title);
+    await user.type(screen.getByLabelText("Artiste ou podcast"), uploadedTrack.artist);
+    const file = new File(["audio"], "episode.mp3", { type: "audio/mpeg" });
+    const fileInput = screen.getByLabelText(/fichier audio/i) as HTMLInputElement;
+    await user.upload(fileInput, file);
+    expect(fileInput.files).toHaveLength(1);
+    const form = screen.getByLabelText("Titre").closest("form") as HTMLFormElement;
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(uploadTrack).toHaveBeenCalledOnce());
+    expect(await screen.findAllByText(uploadedTrack.title)).toHaveLength(2);
+    expect(uploadTrack).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "episode.mp3" }),
+      uploadedTrack.title,
+      uploadedTrack.artist,
+    );
   });
 });

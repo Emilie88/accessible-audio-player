@@ -1,17 +1,18 @@
-import { useEffect, useRef } from "react";
-import { useAudioStore } from "../store/useAudioStore";
+import { useEffect, useRef, useState } from "react";
 import {
-  Play,
+  Music2,
   Pause,
-  Volume2,
-  VolumeX,
+  Play,
   SkipBack,
   SkipForward,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
+import { useAudioStore } from "../store/useAudioStore";
 
-export const AudioPlayer = () => {
+export function AudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-
+  const [playbackError, setPlaybackError] = useState("");
   const {
     currentTrack,
     isPlaying,
@@ -24,177 +25,202 @@ export const AudioPlayer = () => {
     setVolume,
   } = useAudioStore();
 
-  // Synchronisation de l'élément HTML Audio avec Zustand
-  // Synchronisation de l'élément HTML Audio avec Zustand
   useEffect(() => {
-    if (!audioRef.current) return;
-
-    if (isPlaying) {
-      const playPromise = audioRef.current.play();
-      // Vérification de sécurité pour jsdom et anciens navigateurs
-      if (playPromise !== undefined) {
-        playPromise.catch(() => setIsPlaying(false));
-      }
-    } else {
-      audioRef.current.pause();
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (!isPlaying) {
+      audio.pause();
+      return;
     }
-  }, [isPlaying, currentTrack, setIsPlaying]);
+    if (typeof audio.play !== "function") return;
+    if (audio.ended) audio.currentTime = 0;
+
+    const playPromise = audio.play();
+    if (playPromise) {
+      playPromise.catch(() => {
+        setIsPlaying(false);
+        setPlaybackError("La lecture n’a pas pu démarrer. Vérifiez le fichier audio puis réessayez.");
+      });
+    }
+  }, [currentTrack, isPlaying, setIsPlaying]);
 
   useEffect(() => {
-    if (audioRef.current) {
+    if (audioRef.current && Number.isFinite(volume)) {
       audioRef.current.volume = volume;
     }
   }, [volume]);
 
-  // Raccourcis clavier accessibles
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Éviter de déclencher si l'utilisateur tape dans une zone de texte
-      if (["INPUT", "TEXTAREA"].includes((e.target as HTMLElement).tagName))
-        return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.closest("a, input, textarea, select, button, [contenteditable='true']") ||
+          event.altKey ||
+          event.ctrlKey ||
+          event.metaKey)
+      ) return;
 
-      switch (e.code) {
+      const audio = audioRef.current;
+      switch (event.code) {
         case "Space":
-          e.preventDefault();
+          event.preventDefault();
           setIsPlaying(!isPlaying);
           break;
         case "ArrowRight":
-          e.preventDefault();
-          if (audioRef.current) audioRef.current.currentTime += 5;
+          if (audio) {
+            event.preventDefault();
+            audio.currentTime = Math.min(audio.duration || Infinity, audio.currentTime + 5);
+          }
           break;
         case "ArrowLeft":
-          e.preventDefault();
-          if (audioRef.current) audioRef.current.currentTime -= 5;
+          if (audio) {
+            event.preventDefault();
+            audio.currentTime = Math.max(0, audio.currentTime - 5);
+          }
           break;
         case "ArrowUp":
-          e.preventDefault();
+          event.preventDefault();
           setVolume(Math.min(1, volume + 0.1));
           break;
         case "ArrowDown":
-          e.preventDefault();
+          event.preventDefault();
           setVolume(Math.max(0, volume - 0.1));
           break;
       }
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isPlaying, volume, setIsPlaying, setVolume]);
+  }, [isPlaying, setIsPlaying, setVolume, volume]);
 
-  const formatTime = (time: number) => {
+  function formatTime(time: number) {
+    if (!Number.isFinite(time) || time < 0) return "0:00";
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
-    return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
-  };
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  }
+
+  function seekBy(seconds: number) {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.currentTime = Math.max(
+        0,
+        Math.min(audio.duration || Infinity, audio.currentTime + seconds),
+      );
+    }
+  }
 
   if (!currentTrack) {
     return (
-      <div className="p-6 text-center text-slate-400 bg-slate-900 rounded-xl">
-        Sélectionnez une piste pour lancer la lecture
+      <div className="panel player-empty">
+        <span className="player-empty-icon"><Play size={22} aria-hidden="true" /></span>
+        <span>Sélectionnez une piste pour lancer la lecture</span>
       </div>
     );
   }
 
   return (
-    <section
-      aria-label="Lecteur audio"
-      className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl max-w-lg mx-auto border border-slate-800"
-    >
+    <section aria-label="Lecteur audio" className="panel player-panel">
       <audio
         ref={audioRef}
         src={currentTrack.src}
-        onTimeUpdate={() =>
-          audioRef.current && setCurrentTime(audioRef.current.currentTime)
-        }
-        onLoadedMetadata={() =>
-          audioRef.current && setDuration(audioRef.current.duration)
-        }
-        onEnded={() => setIsPlaying(false)}
+        preload="metadata"
+        aria-label={`Audio : ${currentTrack.title}`}
+        onTimeUpdate={() => {
+          if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
+        }}
+        onLoadedMetadata={() => {
+          const audioDuration = audioRef.current?.duration;
+          if (audioDuration !== undefined && Number.isFinite(audioDuration)) {
+            setDuration(audioDuration);
+          }
+          setPlaybackError("");
+        }}
+        onEnded={() => {
+          setIsPlaying(false);
+          setCurrentTime(0);
+        }}
+        onError={() => {
+          setIsPlaying(false);
+          setPlaybackError("Ce fichier audio est indisponible. Essayez une autre piste.");
+        }}
       />
 
-      {/* Informations de la piste */}
-      <div className="text-center mb-6">
-        <h2 className="text-xl font-bold tracking-wide">
-          {currentTrack.title}
-        </h2>
-        <p className="text-slate-400 text-sm">{currentTrack.artist}</p>
+      <div className="player-topline">
+        <span className="player-status"><span className={isPlaying ? "live-dot is-playing" : "live-dot"} /> {isPlaying ? "EN COURS" : "À L’ÉCOUTE"}</span>
+        <span className="player-format">{currentTrack.isUploaded ? "VOTRE AUDIO" : "PODCAST"}</span>
       </div>
 
-      {/* Barre de progression avec ARIA */}
-      <div className="mb-4">
-        <label htmlFor="seek-bar" className="sr-only">
-          Progression de la lecture
-        </label>
+      <div className={`player-art player-art-${currentTrack.id.length % 4}`} aria-hidden="true">
+        <div className={`art-wave${isPlaying ? " is-playing" : ""}`}>
+          {Array.from({ length: 27 }, (_, index) => (
+            <span key={index} style={{ "--bar": `${22 + ((index * 37) % 72)}%` } as React.CSSProperties} />
+          ))}
+        </div>
+        <span className="player-art-icon"><Music2 size={30} aria-hidden="true" /></span>
+      </div>
+
+      <div className="player-track-info">
+        <h2>{currentTrack.title}</h2>
+        <p>{currentTrack.artist}</p>
+      </div>
+
+      <div className="progress-block">
+        <label htmlFor="seek-bar" className="sr-only">Progression de la lecture</label>
         <input
           id="seek-bar"
           type="range"
           min="0"
-          max={duration || 100}
-          value={currentTime}
-          onChange={(e) => {
-            const newTime = Number(e.target.value);
+          max={duration || 1}
+          value={Math.min(currentTime, duration || 1)}
+          onChange={(event) => {
+            const newTime = Number(event.target.value);
             setCurrentTime(newTime);
             if (audioRef.current) audioRef.current.currentTime = newTime;
           }}
-          className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400"
           aria-valuemin={0}
           aria-valuemax={Math.round(duration)}
-          aria-valuenow={Math.round(currentTime)}
+          aria-valuenow={Math.round(Math.min(currentTime, duration))}
           aria-valuetext={`${formatTime(currentTime)} sur ${formatTime(duration)}`}
         />
-        <div className="flex justify-between text-xs text-slate-400 mt-1 font-mono">
+        <div className="time-labels">
           <span>{formatTime(currentTime)}</span>
           <span>{formatTime(duration)}</span>
         </div>
       </div>
 
-      {/* Contrôles de lecture */}
-      <div className="flex items-center justify-center gap-6 mb-6">
-        <button
-          onClick={() =>
-            audioRef.current && (audioRef.current.currentTime -= 10)
-          }
-          className="p-2 text-slate-300 hover:text-white focus:ring-2 focus:ring-indigo-400 rounded-full outline-none"
-          aria-label="Reculer de 10 secondes"
-        >
-          <SkipBack size={24} />
+      <div className="playback-controls">
+        <button type="button" onClick={() => seekBy(-10)} className="skip-control" aria-label="Reculer de 10 secondes">
+          <SkipBack size={19} aria-hidden="true" /><span>10</span>
         </button>
-
         <button
-          onClick={() => setIsPlaying(!isPlaying)}
-          className="p-4 bg-indigo-600 hover:bg-indigo-500 rounded-full transition text-white focus:ring-4 focus:ring-indigo-400 focus:outline-none shadow-lg"
+          type="button"
+          onClick={() => {
+            setPlaybackError("");
+            setIsPlaying(!isPlaying);
+          }}
+          className="play-button"
           aria-label={isPlaying ? "Mettre en pause" : "Lancer la lecture"}
         >
-          {isPlaying ? (
-            <Pause size={28} />
-          ) : (
-            <Play size={28} className="ml-1" />
-          )}
+          {isPlaying
+            ? <Pause size={23} fill="currentColor" aria-hidden="true" />
+            : <Play size={23} fill="currentColor" className="play-icon" aria-hidden="true" />}
         </button>
-
-        <button
-          onClick={() =>
-            audioRef.current && (audioRef.current.currentTime += 10)
-          }
-          className="p-2 text-slate-300 hover:text-white focus:ring-2 focus:ring-indigo-400 rounded-full outline-none"
-          aria-label="Avancer de 10 secondes"
-        >
-          <SkipForward size={24} />
+        <button type="button" onClick={() => seekBy(10)} className="skip-control" aria-label="Avancer de 10 secondes">
+          <SkipForward size={19} aria-hidden="true" /><span>10</span>
         </button>
       </div>
 
-      {/* Contrôle du Volume */}
-      <div className="flex items-center gap-3 bg-slate-800/50 p-3 rounded-lg">
+      <div className="volume-controls">
         <button
+          type="button"
           onClick={() => setVolume(volume === 0 ? 1 : 0)}
-          className="text-slate-300 hover:text-white focus:ring-2 focus:ring-indigo-400 rounded p-1 outline-none"
+          className="volume-button"
           aria-label={volume === 0 ? "Activer le son" : "Couper le son"}
         >
-          {volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
+          {volume === 0 ? <VolumeX size={18} aria-hidden="true" /> : <Volume2 size={18} aria-hidden="true" />}
         </button>
-        <label htmlFor="volume-bar" className="sr-only">
-          Niveau du volume
-        </label>
+        <label htmlFor="volume-bar" className="sr-only">Niveau du volume</label>
         <input
           id="volume-bar"
           type="range"
@@ -202,11 +228,12 @@ export const AudioPlayer = () => {
           max="1"
           step="0.05"
           value={volume}
-          onChange={(e) => setVolume(Number(e.target.value))}
-          className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          aria-label="Volume"
+          onChange={(event) => setVolume(Number(event.target.value))}
+          aria-valuetext={`${Math.round(volume * 100)} %`}
         />
+        <span className="volume-percent">{Math.round(volume * 100)}%</span>
       </div>
+      <p className="playback-error" role="status" aria-live="polite">{playbackError}</p>
     </section>
   );
-};
+}

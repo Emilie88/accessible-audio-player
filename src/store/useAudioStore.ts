@@ -6,6 +6,8 @@ export interface Track {
   artist: string;
   src: string;
   duration: number;
+  isFavorite: boolean;
+  isUploaded: boolean;
 }
 
 interface AudioState {
@@ -18,7 +20,7 @@ interface AudioState {
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
   setVolume: (volume: number) => void;
-  setCurrentTrack: (track: Track) => void;
+  setCurrentTrack: (track: Track | null, autoplay?: boolean) => void;
 }
 
 export const useAudioStore = create<AudioState>((set) => ({
@@ -31,6 +33,6 @@ export const useAudioStore = create<AudioState>((set) => ({
   setCurrentTime: (currentTime) => set({ currentTime }),
   setDuration: (duration) => set({ duration }),
   setVolume: (volume) => set({ volume }),
-  setCurrentTrack: (currentTrack) =>
-    set({ currentTrack, currentTime: 0, isPlaying: true }),
+  setCurrentTrack: (currentTrack, autoplay = currentTrack !== null) =>
+    set({ currentTrack, currentTime: 0, duration: 0, isPlaying: autoplay }),
 }));

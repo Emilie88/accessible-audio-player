@@ -1,43 +1,73 @@
-# 🎵 AudioVerse — Accessible Web Audio Player
+# AudioVerse
 
-[![CI Pipeline](https://github.com/votre-username/accessible-audio-player/actions/workflows/ci.yml/badge.svg)](https://github.com/votre-username/accessible-audio-player/actions)
-![React](https://img.shields.io/badge/React-18.x-blue)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)
-![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-06B6D4)
-![Vitest](https://img.shields.io/badge/Tested%20with-Vitest-6E9F18)
+AudioVerse est une application web de podcasts et d’écoute audio. Elle associe un lecteur accessible au clavier à une API Node.js qui conserve la bibliothèque, les favoris et les fichiers audio ajoutés sur la machine qui héberge le serveur. C’est une bibliothèque locale à un seul utilisateur : il n’y a ni compte ni authentification.
 
-AudioVerse est une application web de lecture audio et de podcasts conçue avec un focus strict sur l'**accessibilité numérique (a11y)**, les **performances** et le **code propre**.
+## Fonctionnalités
 
-![Aperçu de l'application](https://via.placeholder.com/800x400?text=AudioVerse+UI+Preview) <!-- Remplace par un screenshot réel -->
+- Lecture, pause, recherche dans la piste, saut de 10 secondes, volume et raccourcis clavier.
+- Catalogue de démonstration chargé depuis l’API.
+- Recherche par titre ou artiste, et filtre des favoris.
+- Ajout et suppression de fichiers audio personnels (50 Mo maximum).
+- Favoris et bibliothèque conservés après redémarrage.
+- Interface adaptée au mobile, avec libellés accessibles et retours d’erreur visibles.
 
----
+Formats acceptés pour l’ajout : MP3, WAV, OGG, FLAC, AAC, M4A et WEBM.
 
-## 🚀 Key Features
+## Prérequis
 
-- ♿ **100% Accessible (a11y) :** Navigation intégrale au clavier, attributs ARIA dynamiques et retours visuels à fort contraste (normes WCAG).
-- ⌨️ **Raccourcis Clavier :**
-  - `Espace` : Play / Pause
-  - `Flèche Gauche / Droite` : Avancer / Reculer de 5s
-  - `Flèche Haut / Bas` : Ajuster le volume
-- ⚡ **State Management Réactif :** Gestion globale fluide de l'audio via **Zustand**.
-- 🧪 **Code Robuste & Testé :** Tests d'intégration et unitaires configurés avec **Vitest** et **React Testing Library**.
-- 🔄 **Pipeline CI/CD :** Exécution automatique de la suite de tests à chaque push via GitHub Actions.
+- Node.js 20 ou ultérieur
+- npm
 
----
+## Installation et démarrage
 
-## 🛠️ Tech Stack
+```bash
+npm install
+npm run dev
+```
 
-- **Frontend :** React, TypeScript, Vite
-- **Styling :** Tailwind CSS v4, Lucide Icons
-- **State Management :** Zustand
-- **Testing :** Vitest, React Testing Library, JSDOM
+Une seule commande démarre à la fois l’interface et l’API. Ouvrir l’adresse affichée dans le terminal (par défaut `http://127.0.0.1:5173`). Les ports peuvent être modifiés avec les variables `VITE_PORT` et `API_PORT`.
 
----
+Pour lancer la version de production :
 
-## ⚙️ Installation & Run
+```bash
+npm run build
+npm start
+```
 
-1. **Cloner le projet :**
-   ```bash
-   git clone [https://github.com/votre-username/accessible-audio-player.git](https://github.com/votre-username/accessible-audio-player.git)
-   cd accessible-audio-player
-   ```
+L’application compilée et l’API sont alors servies ensemble sur `http://localhost:3000`. Le port peut être modifié avec la variable d’environnement `PORT`.
+
+## Stockage
+
+Au premier lancement de l’API, AudioVerse crée le dossier `data/` à la racine du projet :
+
+- `data/tracks.json` contient le catalogue et l’état des favoris.
+- `data/uploads/` contient les fichiers audio importés.
+
+Ce dossier est ignoré par Git. Pour sauvegarder la bibliothèque, sauvegarder `data/`. Pour la réinitialiser, arrêter le serveur puis supprimer ce dossier.
+
+Le serveur écoute uniquement sur la machine locale par défaut. Pour un usage sur un réseau ou un déploiement, configurez un stockage persistant et ajoutez une authentification et des protections d’accès avant de l’exposer à d’autres personnes.
+
+Le catalogue de démonstration utilise des fichiers audio distants SoundHelix ; leur disponibilité dépend de ce service. Les fichiers importés, eux, sont lus depuis le serveur AudioVerse.
+
+## API
+
+| Méthode | Route | Description |
+| --- | --- | --- |
+| `GET` | `/api/health` | Vérifier que le serveur répond. |
+| `GET` | `/api/tracks` | Obtenir la bibliothèque. Le paramètre `q` filtre par titre ou artiste. |
+| `POST` | `/api/tracks?title=…&artist=…` | Importer un fichier audio brut avec son type MIME. |
+| `PATCH` | `/api/tracks/:id/favorite` | Inverser l’état favori d’une piste. |
+| `DELETE` | `/api/tracks/:id` | Supprimer une piste ; les fichiers importés sont aussi effacés. |
+| `GET` | `/audio/:filename` | Lire un fichier importé, y compris les requêtes HTTP Range. |
+
+L’ajout requiert un type MIME audio accepté. Le serveur valide le titre, l’artiste et la taille du fichier (50 Mo maximum).
+
+## Vérification
+
+```bash
+npm test
+npm run lint
+npm run build
+```
+
+Les tests vérifient l’interface et les routes de l’API, notamment l’import, la lecture par plages d’octets, les favoris et la suppression.

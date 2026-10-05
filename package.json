@@ -4,11 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node server/dev.js",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest"
+    "start": "node server/index.js",
+    "test": "vitest run && node --test server/*.test.js"
   },
   "dependencies": {
     "lucide-react": "^1.42.0",
